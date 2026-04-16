@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora DIFAL & FCP - NT</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 20px; }
+        .card { max-width: 800px; margin: auto; background: #fff; padding: 25px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h2 { color: #1a73e8; text-align: center; margin-bottom: 25px; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .full { grid-column: span 3; }
+        label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 0.85em; color: #444; }
+        select, input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 1em; }
+        .highlight { background-color: #f1f8ff; font-weight: bold; color: #1a73e8; border-color: #c2dbff; }
+        .editavel { background-color: #fff8e1; border-color: #ffe082; color: #ff8f00; }
+        .btn-calc { width: 100%; padding: 15px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-size: 1.1em; cursor: pointer; margin-top: 20px; font-weight: bold; }
+        
+        .status-bar { margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 8px; text-align: center; border: 1px solid #eee; }
+        .tag-regra { padding: 5px 12px; border-radius: 4px; font-size: 0.85em; font-weight: bold; }
+
+        .res-container { margin-top: 20px; display: none; }
+        .res-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        .res-box { padding: 15px; border-radius: 10px; border-left: 5px solid; }
+        .res-difal { background: #e3f2fd; border-left-color: #1a73e8; }
+        .res-fcp { background: #fff3e0; border-left-color: #ff9800; }
+        .val-grande { font-size: 1.3em; display: block; margin-top: 5px; font-weight: bold; color: #2c3e50; }
+
+        .debug-box { background: #fdfdfd; border: 1px solid #e0e0e0; padding: 20px; border-radius: 10px; font-size: 0.9em; line-height: 1.8; color: #555; }
+        .debug-title { font-weight: bold; color: #1a73e8; border-bottom: 1px solid #eee; margin-bottom: 10px; display: block; text-transform: uppercase; font-size: 0.8em; }
+        .math-step { font-family: 'Courier New', Courier, monospace; background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Simulador DIFAL & FCP</h2>
+    
+    <div class="grid">
+        <div class="full">
+            <label>Valor Total da Mercadoria (R$)</label>
+            <input type="text" id="vlrMercadoria" placeholder="R$ 0,00" oninput="mascaraMoeda(this)">
+        </div>
+
+        <div>
+            <label>UF Origem</label>
+            <select id="ufOrigem" onchange="processar()"></select>
+        </div>
+
+        <div>
+            <label>UF Destino</label>
+            <select id="ufDestino" onchange="processar()"></select>
+        </div>
+
+        <div>
+            <label>Aliq. Inter</label>
+            <input type="text" id="aliqInter" class="highlight" readonly>
+        </div>
+
+        <div>
+            <label>Aliq. Interna</label>
+            <input type="text" id="aliqInterna" class="highlight" readonly>
+        </div>
+
+        <div>
+            <label>Aliq. FCP (%) - <i>Editável</i></label>
+            <input type="number" id="aliqFcp" class="editavel" step="1" min="0">
+        </div>
+    </div>
+
+    <div class="status-bar" id="statusRegra"></div>
+
+    <button class="btn-calc" onclick="calcular()">CALCULAR E VER DETALHAMENTO</button>
+
+    <div id="resContainer" class="res-container">
+        <div class="res-row">
+            <div class="res-box res-difal">
+                <strong>DIFAL A RECOLHER</strong>
+                <span class="val-grande" id="outDifal">R$ 0,00</span>
+            </div>
+            <div class="res-box res-fcp">
+                <strong>FCP A RECOLHER</strong>
+                <span class="val-grande" id="outFcp">R$ 0,00</span>
+            </div>
+        </div>
+
+        <div class="debug-box">
+            <span class="debug-title">Memória de Cálculo (Padrão Nota Técnica)</span>
+            <div id="debugContent"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const db = {
+        'AC': { interna: 19, fcp: 0, dupla: false }, 'AL': { interna: 19, fcp: 2, dupla: true },
+        'AM': { interna: 20, fcp: 2, dupla: false }, 'AP': { interna: 18, fcp: 0, dupla: false },
+        'BA': { interna: 20, fcp: 2, dupla: true },  'CE': { interna: 20, fcp: 2, dupla: false },
+        'DF': { interna: 20, fcp: 2, dupla: false }, 'ES': { interna: 17, fcp: 0, dupla: false },
+        'GO': { interna: 19, fcp: 2, dupla: true },  'MA': { interna: 22, fcp: 2, dupla: false },
+        'MG': { interna: 18, fcp: 2, dupla: true },  'MS': { interna: 17, fcp: 0, dupla: false },
+        'MT': { interna: 17, fcp: 2, dupla: false }, 'PA': { interna: 19, fcp: 0, dupla: true },
+        'PB': { interna: 20, fcp: 2, dupla: false }, 'PE': { interna: 20, fcp: 2, dupla: false },
+        'PI': { interna: 21, fcp: 2, dupla: true },  'PR': { interna: 19, fcp: 2, dupla: true },
+        'RJ': { interna: 20, fcp: 2, dupla: false }, 'RN': { interna: 20, fcp: 2, dupla: false },
+        'RO': { interna: 17.5, fcp: 0, dupla: true },'RR': { interna: 20, fcp: 2, dupla: false },
+        'RS': { interna: 17, fcp: 2, dupla: true },  'SC': { interna: 17, fcp: 0, dupla: false },
+        'SE': { interna: 19, fcp: 2, dupla: true },  'SP': { interna: 18, fcp: 0, dupla: false },
+        'TO': { interna: 20, fcp: 2, dupla: true }
+    };
+
+    const sulSudeste = ['SP', 'RJ', 'MG', 'PR', 'RS', 'SC', 'ES'];
+    
+    function mascaraMoeda(i) {
+        let v = i.value.replace(/\D/g,'');
+        v = (v/100).toFixed(2) + '';
+        v = v.replace(".", ",");
+        v = v.replace(/(\d)(\d{3})(\d{3}),/g, "$1.$2.$3,");
+        v = v.replace(/(\d)(\d{3}),/g, "$1.$2,");
+        i.value = v !== '0,00' ? 'R$ ' + v : '';
+    }
+
+    function parseValor(v) {
+        return parseFloat(v.replace(/[^\d,]/g, '').replace(',', '.')) || 0;
+    }
+
+    const selO = document.getElementById('ufOrigem');
+    const selD = document.getElementById('ufDestino');
+    Object.keys(db).sort().forEach(uf => {
+        selO.options.add(new Option(uf, uf));
+        selD.options.add(new Option(uf, uf));
+    });
+    selO.value = 'MS'; selD.value = 'TO';
+
+    function processar() {
+        const o = selO.value; const d = selD.value;
+        let aiInter = (sulSudeste.includes(o) && !sulSudeste.includes(d)) ? 7 : 12;
+        if (o === d) aiInter = 0;
+
+        document.getElementById('aliqInter').value = aiInter + "%";
+        document.getElementById('aliqInterna').value = db[d].interna + "%";
+        document.getElementById('aliqFcp').value = db[d].fcp; // Valor puro para edição
+
+        const status = document.getElementById('statusRegra');
+        status.innerHTML = db[d].dupla ? 
+            `<span class="tag-regra" style="background:#fff3e0; color:#e65100">CÁLCULO POR DENTRO (BASE DUPLA)</span>` :
+            `<span class="tag-regra" style="background:#e8f5e9; color:#2e7d32">CÁLCULO POR FORA (BASE SIMPLES)</span>`;
+        
+        document.getElementById('resContainer').style.display = 'none';
+    }
+
+    function calcular() {
+        const valorReal = parseValor(document.getElementById('vlrMercadoria').value);
+        if (!valorReal) return alert("Insira o valor da mercadoria");
+
+        const d = selD.value;
+        const aiInter = parseFloat(document.getElementById('aliqInter').value) / 100;
+        const aiIntra = parseFloat(document.getElementById('aliqInterna').value) / 100;
+        // Pega o valor do FCP direto do input (permitindo que o usuário apague ou mude)
+        const inputFcp = document.getElementById('aliqFcp').value;
+        const aiFcp = (parseFloat(inputFcp) || 0) / 100;
+        
+        const f = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        
+        let base, difal, vlrFcp, htmlDebug = "";
+
+        if (db[d].dupla) {
+            // Lógica Base Dupla NT (Incluindo FCP no divisor)
+            base = valorReal / (1 - aiIntra - aiFcp);
+            difal = base * (aiIntra - aiInter);
+            vlrFcp = base * aiFcp;
+
+            htmlDebug = `
+                1. <strong>Base de Cálculo:</strong> ${f(valorReal)} / (1 - ${aiIntra} - ${aiFcp}) = <span class="math-step">${f(base)}</span><br>
+                2. <strong>DIFAL:</strong> ${f(base)} × (${(aiIntra*100).toFixed(0)}% - ${(aiInter*100).toFixed(0)}%) = <span class="math-step">${f(difal)}</span><br>
+                3. <strong>FCP:</strong> ${f(base)} × ${(aiFcp*100).toFixed(0)}% = <span class="math-step">${f(vlrFcp)}</span>
+            `;
+        } else {
+            base = valorReal;
+            difal = valorReal * (aiIntra - aiInter);
+            vlrFcp = valorReal * aiFcp;
+
+            htmlDebug = `
+                1. <strong>Base de Cálculo:</strong> Base Simples = <span class="math-step">${f(base)}</span><br>
+                2. <strong>DIFAL:</strong> ${f(valorReal)} × (${(aiIntra*100).toFixed(0)}% - ${(aiInter*100).toFixed(0)}%) = <span class="math-step">${f(difal)}</span><br>
+                3. <strong>FCP:</strong> ${f(valorReal)} × ${(aiFcp*100).toFixed(0)}% = <span class="math-step">${f(vlrFcp)}</span>
+            `;
+        }
+
+        document.getElementById('resContainer').style.display = 'block';
+        document.getElementById('outDifal').innerText = f(difal);
+        document.getElementById('outFcp').innerText = f(vlrFcp);
+        document.getElementById('debugContent').innerHTML = htmlDebug;
+    }
+
+    processar();
+</script>
+</body>
+</html>
